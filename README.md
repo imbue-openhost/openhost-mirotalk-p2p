@@ -72,6 +72,29 @@ If you want to disable host gating and let anyone become host, set
 If you want to require login to *enter* a room (not just claim host),
 set `HOST_USER_AUTH=true`.
 
+### OpenHost auth shim
+
+When the app is deployed on OpenHost and the zone owner is already
+logged in to their zone, they do **not** need to log in to MiroTalk
+separately. A small Express middleware (`app/src/openhost-shim.js`,
+injected into `server.js` at image build time) watches for the
+`X-OpenHost-Is-Owner: true` header that OpenHost's router adds to
+proxied requests, and:
+
+* adds the owner's IP to MiroTalk's in-memory `authHost` allowlist
+  on first request, so `isAuthorizedIP` returns true,
+* sets `hostCfg.authenticated = true` on every owner request, so
+  MiroTalk's stock `/` and `/newcall` handlers don't reset it and
+  bounce the owner to `/login`,
+* registers pre-empting handlers for `/`, `/newcall`, and `/logged`
+  that render the landing / new-call pages directly for owners.
+
+The shim is a pure passthrough for non-owner traffic: guests still
+see MiroTalk's normal flow (`/` → `/login`, or join-by-URL as a
+regular participant). Host-protection and the admin credentials
+above still work for anyone reaching the app from outside OpenHost
+(e.g. via the direct container port in a local development setup).
+
 ## STUN / TURN
 
 WebRTC needs to punch through NAT. The app defaults to:

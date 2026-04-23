@@ -53,6 +53,19 @@ RUN apk add --no-cache tini bash ca-certificates openssl
 WORKDIR /src
 COPY --from=builder /src /src
 
+# Install the OpenHost auth shim -- a small Express middleware
+# that short-circuits MiroTalk's /login flow when the OpenHost
+# router signals an authenticated zone owner via
+# `X-OpenHost-Is-Owner: true`. The shim file is copied alongside
+# server.js so the injected `require('./openhost-shim')` resolves
+# correctly; install-openhost-shim.sh patches server.js in-place
+# to insert that require() before the user-visible route handlers.
+COPY openhost-shim.js /patches/openhost-shim.js
+COPY patches/install-openhost-shim.sh /patches/install-openhost-shim.sh
+RUN chmod +x /patches/install-openhost-shim.sh && \
+    /patches/install-openhost-shim.sh && \
+    rm -rf /patches
+
 # Install our OpenHost-specific bootstrap script that auto-generates
 # persistent secrets, reads the operator's admin password (or mints
 # one), and wires the result into process.env before exec-ing node.
