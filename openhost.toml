@@ -1,0 +1,27 @@
+[app]
+name = "mirotalk-p2p"
+version = "0.1.0"
+description = "Self-hosted peer-to-peer WebRTC video conferencing (no SFU, browsers connect directly)."
+
+[runtime.container]
+image = "Dockerfile"
+port = 3000
+
+[resources]
+# MiroTalk P2P is signaling-only (no media relay server-side), so
+# it's very cheap. 512 MB is plenty for dozens of concurrent rooms.
+memory_mb = 512
+cpu_millicores = 500
+
+[data]
+# Persistent: only the auto-generated secrets (JWT_KEY,
+# API_KEY_SECRET, SESSION_SECRET, host password). Everything else --
+# rooms, peer lists, chat -- is in-memory and evaporates on restart.
+app_data = true
+
+[routing]
+health_check = "/"
+# Anyone with the URL can enter the app. Host-protection (which
+# gates who can *claim* host of a room) is on by default with an
+# auto-generated password -- see the README.
+public_paths = ["/"]
