@@ -270,5 +270,41 @@ module.exports = function installOpenhostShim({ app, hostCfg, authHost, log, get
         });
     });
 
+    // `/login` intercept: don't ever show MiroTalk's username+password
+    // form to a browser in an OpenHost deployment. Bounce browsers to
+    // the OpenHost zone's own /login page instead, so the owner
+    // authenticates once against the zone and doesn't need to
+    // remember MiroTalk's separate admin password. After a
+    // successful zone login they end up on the OpenHost dashboard,
+    // from which they can click through to the MiroTalk app tile --
+    // at which point the zone_auth cookie is already set and our
+    // middleware above auto-authorizes them.
+    //
+    // For non-browser requests (JSON / asset) and programmatic
+    // clients outside an OpenHost deployment, let MiroTalk's own
+    // /login handler respond as usual.
+    const zoneDomain = process.env.OPENHOST_ZONE_DOMAIN;
+    if (zoneDomain) {
+        app.get('/login', (req, res, next) => {
+            if (OIDC.enabled) return next();
+            const accept = req.headers.accept || '';
+            if (!accept.includes('text/html')) return next();
+            isOwner(req).then((ok) => {
+                if (ok) {
+                    // Already the owner; skip MiroTalk's login page
+                    // and drop them on the landing directly.
+                    return res.redirect('/');
+                }
+                const proto = req.headers['x-forwarded-proto'] || 'https';
+                return res.redirect(`${proto}://${zoneDomain}/login`);
+            }).catch((err) => {
+                log.warn('[openhost-shim] owner check errored on /login', { err: err && err.message });
+                next();
+            });
+        });
+    } else {
+        log.warn('[openhost-shim] OPENHOST_ZONE_DOMAIN not set; /login bypass disabled');
+    }
+
     log.info('[openhost-shim] installed; owner auto-auth active via zone_auth cookie verification');
 };
