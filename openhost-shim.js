@@ -208,6 +208,11 @@ module.exports = function installOpenhostShim({ app, hostCfg, authHost, log, get
         return claims.sub === 'owner';
     }
 
+    // Zone domain is used for redirect targets when non-owner
+    // browsers hit protected endpoints (/, /newcall, /login). If
+    // it's unset we fall back to MiroTalk's native /login page.
+    const zoneDomain = process.env.OPENHOST_ZONE_DOMAIN;
+
     // --- middleware: auto-authorize the owner's IP on every request ---
     app.use((req, res, next) => {
         if (!hostCfg.protected) return next();
@@ -236,14 +241,23 @@ module.exports = function installOpenhostShim({ app, hostCfg, authHost, log, get
         return (req, res, next) => {
             if (OIDC.enabled || !hostCfg.protected) return next();
             isOwner(req).then((ok) => {
-                if (!ok) return next();
-                // hostCfg.authenticated is already true via the
-                // middleware above; render the view directly
-                // instead of redirecting to /login.
-                return htmlInjector.injectHtml(views[viewName], res);
+                if (ok) {
+                    // hostCfg.authenticated is already true via the
+                    // middleware above; render the view directly
+                    // instead of letting the stock handler bounce
+                    // to /login.
+                    return htmlInjector.injectHtml(views[viewName], res);
+                }
+                // Non-owner on a protected endpoint. If it's a
+                // browser page navigation, redirect straight to the
+                // OpenHost zone login in one hop instead of letting
+                // MiroTalk's stock handler bounce via /login.
+                const accept = req.headers.accept || '';
+                if (zoneDomain && accept.includes('text/html')) {
+                    return res.redirect(`https://${zoneDomain}/login`);
+                }
+                return next();
             }).catch((err) => {
-                // Log so a silent parsing bug doesn't disappear; fall
-                // through to MiroTalk's stock handler either way.
                 log.warn('[openhost-shim] owner check errored; falling back to stock handler', {
                     view: viewName, err: err && err.message,
                 });
@@ -283,7 +297,6 @@ module.exports = function installOpenhostShim({ app, hostCfg, authHost, log, get
     // For non-browser requests (JSON / asset) and programmatic
     // clients outside an OpenHost deployment, let MiroTalk's own
     // /login handler respond as usual.
-    const zoneDomain = process.env.OPENHOST_ZONE_DOMAIN;
     if (zoneDomain) {
         app.get('/login', (req, res, next) => {
             if (OIDC.enabled) return next();
