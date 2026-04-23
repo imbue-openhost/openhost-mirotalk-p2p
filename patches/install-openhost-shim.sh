@@ -48,11 +48,12 @@ if ! grep -q "$ANCHOR" "$SERVER_JS"; then
 fi
 
 # Insert the require() call immediately BEFORE the anchor line.
-# We use node-style mangling via a small node one-liner to avoid sed
-# quoting headaches with the multi-line snippet.
+# We use a small node script to avoid sed quoting headaches with the
+# multi-line snippet. When node reads a script from stdin the
+# filename "-" shows up as argv[1], so our target path is argv[2].
 node - "$SERVER_JS" <<'NODE'
 const fs = require('fs');
-const file = process.argv[1];
+const file = process.argv[2];
 const original = fs.readFileSync(file, 'utf8');
 const anchor = '// Route to display user information';
 const snippet = `// --- OpenHost auth shim (installed at image build time) ---
