@@ -48,16 +48,23 @@ chmod 700 "$SECRETS_DIR"
 persist_secret() {
     local name="$1"
     local file="$SECRETS_DIR/$name"
-    # If already provided externally, honor it.
+    # If the operator supplied a real value externally, honor it by
+    # persisting it. "Real" means non-empty AND not one of MiroTalk's
+    # default-template placeholder strings.
     local existing="${!name:-}"
-    if [[ -n "$existing" && "$existing" != "mirotalkp2p_jwt_secret" \
-          && "$existing" != "mirotalkp2p_default_secret" \
-          && "$existing" != "mirotalk-p2p-oidc-secret" ]]; then
+    case "$existing" in
+        "" | "mirotalk_jwt_secret" | "mirotalkp2p_jwt_secret" \
+           | "mirotalkp2p_default_secret" | "mirotalk-p2p-oidc-secret")
+            existing=""
+            ;;
+    esac
+    if [[ -n "$existing" ]]; then
         printf '%s' "$existing" > "$file"
         chmod 600 "$file"
-        return
     fi
-    if [[ ! -f "$file" ]]; then
+    # Generate a fresh value if the persisted file is missing OR empty
+    # (a previous boot may have written an empty file due to a bug).
+    if [[ ! -s "$file" ]]; then
         # 32 bytes (64 hex) = 256 bits of entropy.
         openssl rand -hex 32 > "$file"
         chmod 600 "$file"
