@@ -295,8 +295,10 @@ module.exports = function installOpenhostShim({ app, hostCfg, authHost, log, get
                     // and drop them on the landing directly.
                     return res.redirect('/');
                 }
-                const proto = req.headers['x-forwarded-proto'] || 'https';
-                return res.redirect(`${proto}://${zoneDomain}/login`);
+                // OpenHost terminates TLS upstream, so the app
+                // only ever sees plain HTTP requests -- but the
+                // user-visible scheme is https. Hardcode it.
+                return res.redirect(`https://${zoneDomain}/login`);
             }).catch((err) => {
                 log.warn('[openhost-shim] owner check errored on /login', { err: err && err.message });
                 next();
