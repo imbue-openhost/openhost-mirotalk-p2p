@@ -20,9 +20,19 @@
 #
 #   3. exec the real CMD (node app/src/server.js by default).
 
-set -eu
+set -euo pipefail
 
 log() { echo "[openhost-mirotalk] $*" >&2; }
+
+# Sanity-check the tools the rest of this script needs. If any are
+# missing we'd rather fail loudly than silently produce empty secret
+# files.
+for bin in openssl tr; do
+    if ! command -v "$bin" >/dev/null; then
+        log "FATAL: required binary '$bin' not found on PATH"
+        exit 1
+    fi
+done
 
 APP_DATA="${OPENHOST_APP_DATA_DIR:-/data/app_data/mirotalk-p2p}"
 SECRETS_DIR="$APP_DATA/secrets"

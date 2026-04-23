@@ -45,7 +45,7 @@ FROM node:22-alpine
 # tini gives us a proper pid-1 so signals (SIGTERM from OpenHost on
 # stop/reload) propagate cleanly to node and it exits 0 instead of
 # getting SIGKILLed.
-RUN apk add --no-cache tini bash ca-certificates
+RUN apk add --no-cache tini bash ca-certificates openssl
 
 # Copy the fully-installed src tree from the builder. /src/app/ssl/
 # contains the committed self-signed cert+key httpolyglot reads at
