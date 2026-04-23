@@ -90,12 +90,20 @@ DEFAULT_HOST_USERS='[{"username":"admin","password":"admin"},{"username":"guest"
 HOST_USERS_FILE="$SECRETS_DIR/HOST_USERS.json"
 
 if [[ -z "${HOST_USERS:-}" || "${HOST_USERS}" == "$DEFAULT_HOST_USERS" ]]; then
-    if [[ ! -f "$HOST_USERS_FILE" ]]; then
+    # -s: regenerate if the file is missing OR empty (e.g. a prior
+    # boot crashed mid-write, leaving a zero-byte file that would
+    # otherwise leave HOST_USERS set to the empty string and allow
+    # anyone to claim host).
+    if [[ ! -s "$HOST_USERS_FILE" ]]; then
         ADMIN_PW="$(openssl rand -hex 12)"
-        cat > "$HOST_USERS_FILE" <<JSON
+        # Write to a tmp then rename so a mid-write crash can't
+        # leave an empty / half-written file in place.
+        tmp="$HOST_USERS_FILE.tmp"
+        cat > "$tmp" <<JSON
 [{"username":"admin","password":"$ADMIN_PW","displayname":"Admin","allowed_rooms":["*"]}]
 JSON
-        chmod 600 "$HOST_USERS_FILE"
+        chmod 600 "$tmp"
+        mv -f "$tmp" "$HOST_USERS_FILE"
         log "==============================================="
         log " MiroTalk P2P host-admin credentials (first boot)"
         log "   username: admin"
@@ -107,6 +115,13 @@ JSON
         log "==============================================="
     fi
     HOST_USERS="$(cat "$HOST_USERS_FILE")"
+fi
+# Final sanity check: if something left HOST_USERS empty after all
+# of the above, refuse to boot rather than letting the server come
+# up wide-open.
+if [[ -z "$HOST_USERS" ]]; then
+    log "FATAL: HOST_USERS is empty; refusing to start. Remove $HOST_USERS_FILE and try again."
+    exit 1
 fi
 export HOST_USERS
 
