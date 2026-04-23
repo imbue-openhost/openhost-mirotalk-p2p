@@ -77,9 +77,12 @@ set `HOST_USER_AUTH=true`.
 When the app is deployed on OpenHost and the zone owner is already
 logged in to their zone, they do **not** need to log in to MiroTalk
 separately. A small Express middleware (`app/src/openhost-shim.js`,
-injected into `server.js` at image build time) watches for the
-`X-OpenHost-Is-Owner: true` header that OpenHost's router adds to
-proxied requests, and:
+injected into `server.js` at image build time) verifies the
+`zone_auth` cookie that OpenHost's router forwards from owner
+browsers. The cookie is an RS256-signed JWT; we fetch the router's
+public key from `{OPENHOST_ROUTER_URL}/.well-known/jwks.json` at
+startup and cache it for 10 minutes. When the cookie verifies and
+`claims.sub === "owner"`, the shim:
 
 * adds the owner's IP to MiroTalk's in-memory `authHost` allowlist
   on first request, so `isAuthorizedIP` returns true,
@@ -88,6 +91,13 @@ proxied requests, and:
   bounce the owner to `/login`,
 * registers pre-empting handlers for `/`, `/newcall`, and `/logged`
   that render the landing / new-call pages directly for owners.
+
+The shim deliberately does **not** trust the `X-OpenHost-Is-Owner`
+request header the router also sets: the current router forwards
+client-supplied copies of that header for non-owner requests, so
+it can be spoofed. The `zone_auth` cookie is a signed JWT, so the
+shim accepts no claim of owner identity without a valid signature
+from the router's private key.
 
 The shim is a pure passthrough for non-owner traffic: guests still
 see MiroTalk's normal flow (`/` → `/login`, or join-by-URL as a
