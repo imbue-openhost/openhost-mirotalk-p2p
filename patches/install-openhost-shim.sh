@@ -58,7 +58,8 @@ const original = fs.readFileSync(file, 'utf8');
 const anchor = '// Route to display user information';
 const snippet = `// --- OpenHost auth shim (installed at image build time) ---
 // Pre-empts MiroTalk's /login flow when the OpenHost zone owner is
-// authenticated (signalled by the X-OpenHost-Is-Owner header).
+// authenticated (verified via the zone_auth JWT cookie; see
+// openhost-shim.js). Does not trust any incoming headers.
 require('./openhost-shim')({
     app,
     hostCfg,

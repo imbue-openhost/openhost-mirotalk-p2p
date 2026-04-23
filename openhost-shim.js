@@ -156,14 +156,19 @@ function verifyJwt(token, keys) {
     if (header.alg !== 'RS256') return null;
     const data = Buffer.from(headerB64 + '.' + payloadB64, 'utf8');
     const sig = base64urlToBuffer(sigB64);
+    // Require an exp claim. Without one, a stolen token would be
+    // valid forever. OpenHost always sets exp, but we defense-in-
+    // depth check because we're the last line of defense.
+    const now = Math.floor(Date.now() / 1000);
+    if (typeof payload.exp !== 'number') return null;
+    if (payload.exp < now) return null;
+    // iat must also be sane if present (reject clock-skew abuse).
+    if (typeof payload.iat === 'number' && payload.iat > now + 300) return null;
+
     for (const key of keys) {
         try {
             const ok = crypto.verify('RSA-SHA256', data, key, sig);
-            if (ok) {
-                const now = Math.floor(Date.now() / 1000);
-                if (typeof payload.exp === 'number' && payload.exp < now) return null;
-                return payload;
-            }
+            if (ok) return payload;
         } catch {
             // Try next key
         }
@@ -236,7 +241,14 @@ module.exports = function installOpenhostShim({ app, hostCfg, authHost, log, get
                 // middleware above; render the view directly
                 // instead of redirecting to /login.
                 return htmlInjector.injectHtml(views[viewName], res);
-            }).catch(() => next());
+            }).catch((err) => {
+                // Log so a silent parsing bug doesn't disappear; fall
+                // through to MiroTalk's stock handler either way.
+                log.warn('[openhost-shim] owner check errored; falling back to stock handler', {
+                    view: viewName, err: err && err.message,
+                });
+                next();
+            });
         };
     }
 
@@ -252,7 +264,10 @@ module.exports = function installOpenhostShim({ app, hostCfg, authHost, log, get
         isOwner(req).then((ok) => {
             if (!ok) return next();
             return res.redirect('/');
-        }).catch(() => next());
+        }).catch((err) => {
+            log.warn('[openhost-shim] owner check errored on /logged', { err: err && err.message });
+            next();
+        });
     });
 
     log.info('[openhost-shim] installed; owner auto-auth active via zone_auth cookie verification');
